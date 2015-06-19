@@ -1,0 +1,745 @@
+<html>
+	<head>
+		<title>Space Shooter 2015</title>
+		<script language="javascript" src="js/jquery-2.1.4.min.js" type="text/javascript"></script>
+		<script language="javascript" src="js/spritemanager.js" type="text/javascript"></script>
+		<script language="javascript" src="js/sprite.js" type="text/javascript"></script>
+		<script language="javascript" src="js/input.js" type="text/javascript"></script>
+		<!-- // <script language="javascript" src="js/sound.js" type="text/javascript"></script> -->
+
+		<link href="css/style.css" rel="stylesheet" />
+	</head>
+	<body>
+		<script type="text/javascript">
+			//<![CDATA[
+				// A cross-browser requestAnimationFrame
+				var requestAnimFrame = (function(){
+					return window.requestAnimationFrame ||
+					window.webkitRequestAnimationFrame ||
+					window.mozRequestAnimationFrame ||
+					window.oRequestAnimationFrame ||
+					window.msRequestAnimationFrame ||
+					function(callback){
+						window.setTimeout(callback, 1000 / 60);
+					};
+				})();
+
+				// Game Parameters/Variables
+				var background;
+				var backgroundX = 0;
+				var backgroundX2 = 512;
+				var backgroundY = 0;
+				var backgroundY2 = -800;
+				var canvasWidth = 1024;
+				var canvasHeight = 800;
+				var lastTime;
+				var missedEnemies = 0;
+
+				// PLayer 1 Settings
+				var player1GameOver = false;
+				var player1Speed = 550;
+				var player1Bullets = [];
+				var player1LastBullet = Date.now();
+				var player1Missiles = [];
+				var player1LastMissile = Date.now();
+				var player1HitCounter = 0;
+				var player1Score = 0;
+
+				// Flying Enemy Array + Frequency Settings
+				var flyingEnemies = [];
+				var lastFlyingEnemy = Date.now();
+
+				// Ground Enemy Array + Frequency Settings
+				var groundEnemies = [];
+				var lastGroundEnemy = Date.now();
+
+				// Explosion Arrays
+				var smallExplosion = [];
+				var largeExplosion = [];
+
+				//Get screen height
+				var windowHeight = $(window).height();
+
+				// Create the canvas
+				var canvas = document.createElement("canvas");
+				var context = canvas.getContext("2d");
+				canvas.width = canvasWidth;
+				canvas.height = canvasHeight;
+				//canvas.height = windowHeight - 200;
+				document.body.appendChild(canvas);
+
+				// Preloads images
+				resources.load([
+					'images/sprites.png',
+					'images/stonebackground.jpg',
+					'images/explosions.png',
+				]);
+				resources.onReady(StartGame);
+
+				// The function that starts the whole game
+				function StartGame() {
+					player1GameOver = false;
+					gameTime = 0;
+					player1Score = 0;
+					lastTime = Date.now();
+					GameLoop();
+				}
+
+				// Reset game to original state
+				function Reset() {
+					location.reload(true);
+				}
+
+				// Call this when player hits enemies too much or too many enemies are missed
+				function GameOver() {
+					document.getElementById('game-over').style.display = 'block';
+					document.getElementById('game-over-overlay').style.display = 'block';
+					player1GameOver = true;
+					player1.kill();
+				}
+
+				// Sets up the game loop (framerate, canvas rendering, updating game objects)
+				function GameLoop() {
+					var now = Date.now();
+					var frameRate = (now - lastTime) / 1000.0;
+
+					Update(frameRate);
+					RenderCanvas();
+
+					lastTime = now;
+					requestAnimFrame(GameLoop);
+				};
+
+				// Update game objects
+				function Update(frameRate) {
+					if (player1Score < -5000) {
+						GameOver();
+					}
+
+				    gameTime += frameRate;
+
+					// Checks to see if the player is within the canvas
+					CheckPlayerBounds();
+
+					// Updates the scoreboard for player 1
+					document.getElementById('player1Scoreboard').innerHTML = "Score: " + player1Score;
+
+					if (input.isDown('DOWN') || input.isDown('s')) {
+						player1.pos[1] += player1Speed * frameRate;
+					}
+
+					if (input.isDown('UP') || input.isDown('w')) {
+						player1.pos[1] -= player1Speed * frameRate;
+					}
+
+					if (input.isDown('LEFT') || input.isDown('a')) {
+						player1.pos[0] -= player1Speed * frameRate;
+					}
+
+					if (input.isDown('RIGHT') || input.isDown('d')) {
+						player1.pos[0] += player1Speed * frameRate;
+					}
+
+					if (input.isDown('b') && Date.now() - player1LastBullet > 100 && !player1GameOver) {
+						player1.shootBullets();
+
+						player1LastBullet = Date.now();
+					}
+
+					if (input.isDown('m') && Date.now() - player1LastMissile > 500 && !player1GameOver) {
+						player1.shootMissiles();
+
+						player1LastMissile = Date.now();
+					}
+
+					player1Bullets.forEach(function(bullet) {
+						bullet.update();
+					});
+
+					player1Bullets = player1Bullets.filter(function(bullet) {
+						return bullet.active;
+					});
+
+					player1Missiles.forEach(function(missile) {
+						missile.update();
+					});
+
+					player1Missiles = player1Missiles.filter(function(missile) {
+						return missile.active;
+					});
+
+					flyingEnemies.forEach(function(fEnemy) {
+						fEnemy.update();
+					});
+
+					flyingEnemies = flyingEnemies.filter(function(fEnemy) {
+						return fEnemy.active;
+					});
+
+					//Adjust this to randomly generate flying enemies
+					if(Math.random() < 0.1 && Date.now() - lastFlyingEnemy > 1000) {
+						flyingEnemies.push(FlyingEnemy({
+							sprite: new Sprite('images/sprites.png', [131, 0], [96, 130])
+						}));
+
+						lastFlyingEnemy = Date.now();
+					}
+
+					groundEnemies.forEach(function(gEnemy) {
+						gEnemy.update();
+					});
+
+					groundEnemies = groundEnemies.filter(function(gEnemy) {
+						return gEnemy.active;
+					});
+
+					//Adjust this to randomly generate ground enemies
+					if(Math.random() < 0.1 && Date.now() - lastGroundEnemy > 1000) {
+						groundEnemies.push(GroundEnemy({
+							sprite: new Sprite('images/sprites.png', [640, 0], [72, 57])
+						}));
+
+						lastGroundEnemy = Date.now();
+					}
+
+					// Updates the small explosion sprite animation
+					for(var i=0; i < smallExplosion.length; i++) {
+						smallExplosion[i].sprite.update(frameRate);
+
+				        if(smallExplosion[i].sprite.done) {
+							smallExplosion.splice(i, 1);
+				            i--;
+				        }
+				    }
+
+					// Updates the large explosion sprite animation
+					for (var le=0; le < largeExplosion.length; le++) {
+						largeExplosion[le].sprite.update(frameRate);
+
+						if (largeExplosion[le].sprite.done) {
+							largeExplosion.splice(le, 1);
+							le--;
+						}
+					}
+
+					// Checks for collisions between everything
+					CheckCollisions();
+				};
+
+				//Renders the canvas
+				function RenderCanvas() {
+					// Tiles the canvas background so that it appears to be moving
+					context.drawImage(resources.get('images/stonebackground.jpg'), backgroundX, backgroundY);
+					context.drawImage(resources.get('images/stonebackground.jpg'), backgroundX, backgroundY2);
+
+					context.fillStyle = background;
+
+					// Seamlessly makes the two background images look like one as they move down the screen
+					if (backgroundY > 800) {
+						backgroundY = -799;
+					}
+
+					if (backgroundY2 > 800) {
+						backgroundY2 = -799;
+					}
+
+					backgroundY += 1;
+					backgroundY2 += 1;
+
+					groundEnemies.forEach(function(gEnemy) {
+						gEnemy.draw();
+					});
+
+					flyingEnemies.forEach(function(fEnemy) {
+						fEnemy.draw();
+					});
+
+					player1.draw();
+
+					player1Bullets.forEach(function(bullet) {
+						bullet.draw();
+					});
+
+					player1Missiles.forEach(function(missile) {
+						missile.draw();
+					});
+
+					smallExplosion.forEach(function(sExplosion) {
+						context.save();
+						context.translate(sExplosion.x, sExplosion.y);
+						sExplosion.sprite.render(context);
+						context.restore();
+					});
+
+					largeExplosion.forEach(function(lExplosion) {
+						context.save();
+						context.translate(lExplosion.x, lExplosion.y);
+						lExplosion.sprite.render(context);
+						context.restore();
+					});
+
+				};
+
+				//**********************************************************************************
+				// Player Functions/Objects/Actions
+				//**********************************************************************************
+				// Creates the player object
+				var player1 = {
+					x: [canvas.width / 2],
+					y: [canvas.height - 75],
+					width: 37,
+					height: 64,
+					pos: [canvas.width / 2, canvas.height - 75],
+					sprite: new Sprite('images/sprites.png', [0, 0], [37, 64]),
+					draw: function() {
+						context.save();
+						context.translate(this.pos[0], this.pos[1]);
+						this.sprite.render(context);
+						context.restore();
+					}
+				};
+
+				// Adds bullets to the bullet array
+				player1.shootBullets = function() {
+					var bulletPosition = this.midpoint();
+
+					player1Bullets.push(Bullet({
+						speed: 5,
+						x: bulletPosition.x,
+						y: bulletPosition.y,
+						sprite: new Sprite('images/sprites.png', [38, 0], [32, 8])
+					}));
+				};
+
+				// Adds missiles to the missile array
+				player1.shootMissiles = function() {
+					var missilePosition = this.midpoint();
+
+					player1Missiles.push(Missile({
+						speed: 5,
+						x: missilePosition.x,
+						y: missilePosition.y,
+						sprite: new Sprite('images/sprites.png', [228, 0], [12, 26])
+					}));
+				};
+
+				// Returns the midpoint of the player 1 object
+				player1.midpoint = function() {
+					return {
+						x: player1.pos[0] + player1.width / 2 - 15,
+						y: player1.pos[1] + player1.height / 2 + 10
+					};
+				};
+
+				// Explosion sprite for when the player hits something
+				player1.explode = function() {
+					largeExplosion.push({
+						x: player1.pos[0],
+						y: player1.pos[1],
+						sprite: new Sprite('images/explosions.png',
+										[0, 100],
+										[98, 96],
+										2,
+										[2, 3, 4],
+										null,
+										true)
+					});
+				};
+
+				// Kills off the player and ends the game
+				player1.kill = function() {
+					this.active = false;
+				}
+
+				//**********************************************************************************
+				// Weapons Systems
+				//**********************************************************************************
+
+				// Creates the bullets
+				function Bullet(bullet) {
+					bullet.active = true;
+
+					bullet.xVelocity = 0;
+					bullet.yVelocity = -bullet.speed;
+
+					bullet.width = 32;
+					bullet.height = 8;
+
+					// Checks to see if the bullet has hit one of the walls
+					bullet.inBounds = function() {
+						return bullet.x >= 0 && bullet.x <= canvasWidth && bullet.y >= 0 && bullet.y <= canvasHeight;
+					};
+
+					// Draws the bullet on the canvas
+					bullet.draw = function() {
+						context.save();
+						context.translate(this.x, this.y);
+						this.sprite.render(context);
+						context.restore();
+					};
+
+					// Updates the bullet position
+					bullet.update = function() {
+						bullet.x += bullet.xVelocity;
+						bullet.y += bullet.yVelocity;
+
+						bullet.active = bullet.active && bullet.inBounds();
+					};
+
+					// Removes the bullet from the game
+					bullet.kill = function() {
+						this.active = false;
+					};
+
+					return bullet;
+				}
+
+				// Creates the missiles
+				function Missile(missile) {
+					missile.active = true;
+
+					missile.xVelocity = 0;
+					missile.yVelocity = -missile.speed;
+
+					missile.width = 12;
+					missile.height = 26;
+
+					// Checks to see if missile has hit a wall
+					missile.inBounds = function() {
+						return missile.x >= 0 && missile.x <= canvasWidth && missile.y >= 0 && missile.y <= canvasHeight;
+					};
+
+					// Draws the missile on the canvas
+					missile.draw = function() {
+						context.save();
+						context.translate(this.x, this.y);
+						this.sprite.render(context);
+						context.restore();
+					};
+
+					// Updates the missile position
+					missile.update = function() {
+						missile.x += missile.xVelocity;
+						missile.y += missile.yVelocity;
+
+						missile.active = missile.active && missile.inBounds();
+					};
+
+					// Removes the missile
+					missile.kill = function() {
+						this.active = false;
+					};
+
+					return missile;
+				}
+
+				//**********************************************************************************
+				// Enemies (flying & ground)
+				//**********************************************************************************
+
+				// Creates the flying enemies
+				function FlyingEnemy(fEnemy) {
+					fEnemy = fEnemy || {};
+
+					fEnemy.active = true;
+					fEnemy.age = Math.floor(Math.random() * 128);
+
+					fEnemy.width = 96;
+					fEnemy.height = 130;
+					fEnemy.x = Math.floor(Math.random() * canvas.width);
+					fEnemy.y = -100;
+					fEnemy.xVelocity = 0
+					fEnemy.yVelocity = 2;
+					fEnemy.hitCounter = 0;
+
+					// Checks to see if the flying enemy has hit a wall
+					fEnemy.inBounds = function() {
+						return fEnemy.x >= 0 && fEnemy.x <= canvasWidth && fEnemy.y >= -150 && fEnemy.y <= canvasHeight;
+					};
+
+					// Draws the flying enemy on the canvas
+					fEnemy.draw = function() {
+						context.save();
+						context.translate(this.x, this.y);
+						this.sprite.render(context);
+						context.restore();
+					};
+
+					// Updates the flying enemy position on the screen
+					fEnemy.update = function() {
+						fEnemy.x += fEnemy.xVelocity;
+						fEnemy.y += fEnemy.yVelocity;
+
+						fEnemy.age++;
+
+						fEnemy.active = fEnemy.active && fEnemy.inBounds();
+					};
+
+					// Gets the midpoint of the flying enemy
+					fEnemy.midpoint = function() {
+						return {
+							x: fEnemy.x + fEnemy.width / 2,
+							y: fEnemy.y + fEnemy.height / 2
+						};
+					};
+
+					// Plays the small explosion sprite if flying enemy hit by bullets
+					fEnemy.bulletExplode = function() {
+						smallExplosion.push({
+							x: fEnemy.x,
+							y: fEnemy.y,
+							sprite: new Sprite('images/explosions.png',
+											[0, 0],
+											[98, 100],
+											10,
+											[0, 1, 2, 3, 4, 5],
+											null,
+											true)
+						});
+					};
+
+					// Plays the large explosion sprite if flying enemy is hit by missiles
+					fEnemy.missileExplode = function() {
+						largeExplosion.push({
+							x: fEnemy.x,
+							y: fEnemy.y,
+							sprite: new Sprite('images/explosions.png',
+											[0, 100],
+											[98, 96],
+											5,
+											[0, 1, 2, 3, 4, 5],
+											null,
+											true)
+						});
+					};
+					// Removes the flying enemy
+					fEnemy.kill = function() {
+						this.active = false;
+					};
+
+					return fEnemy;
+				};
+
+				// Creates the ground enemies
+				function GroundEnemy(gEnemy) {
+					gEnemy = gEnemy || {};
+
+					gEnemy.active = true;
+					gEnemy.age = Math.floor(Math.random() * 128);
+
+					gEnemy.width = 73;
+					gEnemy.height = 57;
+					gEnemy.x = Math.floor(Math.random() * canvas.width);
+					gEnemy.y = -100;
+					gEnemy.xVelocity = 0
+					gEnemy.yVelocity = 1;
+					gEnemy.hitCounter = 0;
+
+					// Checks to see if the ground enemy has hit a wall
+					gEnemy.inBounds = function() {
+						return gEnemy.x >= 0 && gEnemy.x <= canvasWidth && gEnemy.y >= -150 && gEnemy.y <= canvasHeight;
+					};
+
+					// Draws the ground enemy building on the canvas
+					gEnemy.draw = function() {
+						context.save();
+						context.translate(this.x, this.y);
+						this.sprite.render(context);
+						context.restore();
+					};
+
+					// Updates the ground building position (should track with the moving background)
+					gEnemy.update = function() {
+						gEnemy.x += gEnemy.xVelocity;
+						gEnemy.y += gEnemy.yVelocity;
+
+						gEnemy.age++;
+
+						gEnemy.active = gEnemy.active && gEnemy.inBounds();
+					};
+
+					// Plays the small explosion sprite if ground enemy building is hit
+					gEnemy.explode = function() {
+						smallExplosion.push({
+							x: gEnemy.x,
+							y: gEnemy.y,
+							sprite: new Sprite('images/explosions.png',
+											[0, 0],
+											[98, 100],
+											10,
+											[0, 1, 2, 3, 4, 5],
+											null,
+											true)
+						});
+					};
+
+					// Removes the ground enemy
+					gEnemy.kill = function() {
+						this.active = false;
+					}
+
+					return gEnemy;
+				};
+
+
+				//**********************************************************************************
+				// Collision Detection
+				//**********************************************************************************
+				var gEnemyBulletHitCounter = 0;
+				var fEnemyMissileHitCounter = 0;
+				var fEnemyBulletHitCounter = 0;
+
+				// Box collision algorithm
+				function Collides(x, y, r, b, x2, y2, r2, b2) {
+					return !(r <= x2 || x > r2 || b <= y2 || y > b2);
+				}
+
+				// Runs the box collision algorithm
+				function BoxCollides(pos, size, pos2, size2) {
+					return Collides(pos[0], pos[1],
+									pos[0] + size[0], pos[1] + size[1],
+									pos2[0], pos2[1],
+									pos2[0] + size2[0], pos2[1] + size2[1]);
+				}
+
+				// Loops through all the arrays checking to see if there are any collisions
+				function CheckCollisions() {
+					// Collision detection for flying enemies, player1, bullets, and missiles
+					for(var i=0; i < flyingEnemies.length; i++) {
+						var pos = [flyingEnemies[i].x, flyingEnemies[i].y];
+						var size = flyingEnemies[i].sprite.size;
+
+						// Collision detection for flying enemies and the player
+						if (BoxCollides(pos, size, player1.pos, player1.sprite.size)) {
+							if (player1HitCounter > 9) {
+								// Kill Everything
+								flyingEnemies[i].missileExplode();
+								flyingEnemies[i].kill();
+								player1.explode();
+								player1.active = false;
+								player1.kill();
+								GameOver();
+								player1HitCounter = 0;
+								player1GameOver = true;
+							} else if (player1HitCounter > 5) {
+								flyingEnemies[i].missileExplode();
+								flyingEnemies[i].kill();
+								player1Score = player1Score - 500;
+								player1HitCounter++;
+							} else {
+								flyingEnemies[i].missileExplode();
+								flyingEnemies[i].kill();
+								player1Score = player1Score - 500;
+								player1HitCounter++;
+							}
+						}
+
+						// Collision detection for flying enemies and bullets
+						for (var b=0; b < player1Bullets.length; b++) {
+							var bulletPos = [player1Bullets[b].x, player1Bullets[b].y];
+
+							if (BoxCollides(pos, size, bulletPos, player1Bullets[b].sprite.size)) {
+								if (flyingEnemies[i].hitCounter > 3) {
+									flyingEnemies[i].bulletExplode();
+									flyingEnemies[i].kill();
+									player1Bullets[b].kill();
+									flyingEnemies[i].hitCounter = 0;
+									player1Score += 25;
+								} else {
+									flyingEnemies[i].bulletExplode();
+									player1Bullets[b].kill();
+									flyingEnemies[i].hitCounter++;
+									player1Score += 10;
+								}
+							}
+						}
+
+						// Collision detection for missiles and flying enemies
+						for (var m=0; m < player1Missiles.length; m++) {
+							var missilePos = [player1Missiles[m].x, player1Missiles[m].y];
+
+							if (BoxCollides(pos, size, missilePos, player1Missiles[m].sprite.size)) {
+								if (fEnemyMissileHitCounter > 1) {
+									flyingEnemies[i].missileExplode();
+									flyingEnemies[i].kill();
+									player1Missiles[m].kill();
+									fEnemyMissileHitCounter = 0;
+									player1Score += 50;
+								} else {
+									flyingEnemies[i].missileExplode();
+									player1Missiles[m].kill();
+									fEnemyMissileHitCounter++;
+									player1Score += 15;
+								}
+							}
+						}
+					}
+
+					// Collision detection for ground enemies and bullets
+					for(var i=0; i < groundEnemies.length; i++) {
+						var pos = [groundEnemies[i].x, groundEnemies[i].y];
+						var size = groundEnemies[i].sprite.size;
+
+						for (var b=0; b < player1Bullets.length; b++) {
+							var bulletPos = [player1Bullets[b].x, player1Bullets[b].y];
+
+							if (BoxCollides(pos, size, bulletPos, player1Bullets[b].sprite.size)) {
+								if (groundEnemies[i].hitCounter > 1) {
+									groundEnemies[i].explode();
+									groundEnemies[i].kill();
+									player1Bullets[b].kill();
+									groundEnemies[i].hitCounter = 0;
+									player1Score += 25;
+								} else {
+									groundEnemies[i].explode();
+									player1Bullets[b].kill();
+									groundEnemies[i].hitCounter++;
+									player1Score += 10;
+								}
+							}
+						}
+					}
+				}
+
+				// Checks to see if the player has hit a wall
+				function CheckPlayerBounds() {
+					if(player1.pos[0] < 0) {
+						player1.pos[0] = 0;
+					}
+					else if(player1.pos[0] > canvas.width - player1.sprite.size[0]) {
+						player1.pos[0] = canvas.width - player1.sprite.size[0];
+					}
+
+					if(player1.pos[1] < 0) {
+						player1.pos[1] = 0;
+					}
+					else if(player1.pos[1] > canvas.height - player1.sprite.size[1]) {
+						player1.pos[1] = canvas.height - player1.sprite.size[1];
+					}
+				}
+			//]]>
+		</script>
+		<div id="game-over-overlay"></div>
+		<div id="game-over">
+			<h1>GAME OVER</h1>
+			<button id="startgame" onclick="Reset();">Play Again</button>
+		</div>
+
+		<div class="wrapper">
+			<div id="instructions">
+				<div>
+					Move using the <span class="key">arrow</span> keys
+				</div>
+				<div>
+					To shoot bullets, press <span class="key">b</span>
+				</div>
+				<div>
+					To shoot missiles, press <span class="key">m</span>
+				</div>
+			</div>
+			<div id="messages"></div>
+			<div id="player1Scoreboard"></div>
+			<div style="clear:both;"></div>
+		</div>
+	</body>
+</html>

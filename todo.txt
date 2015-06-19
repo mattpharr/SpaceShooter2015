@@ -1,0 +1,7 @@
+1. Add Sound
+2. Sprite Animation
+3. Enemies shoot back
+4. Boss/End Level
+5. More Than One Level
+6. 2-Player Mode
+
